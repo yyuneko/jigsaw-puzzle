@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { generatePuzzle } from './utils/create-puzzle'
 import type { Fragment } from './types/img'
@@ -7,32 +7,34 @@ import { v7 as uuid } from 'uuid'
 import { height, width } from './constants'
 import Konva from 'konva'
 import type { KonvaEventListener, Node } from 'konva/lib/Node'
-import type { Image } from 'konva/lib/shapes/Image'
 import type { Group } from 'konva/lib/Group'
+import { clip } from './types/template'
+import type { Shape } from 'konva/lib/Shape'
 
 const rowCnt = 5;
 const colCnt = 5;
 function App() {
   const imgs = useRef<Fragment[]>([])
-  const enableShadow = (e: Image) => {
+  const [success, setSuccess] = useState(false)
+  const enableShadow = (e: Shape) => {
     e.shadowEnabled(true)
   }
-  const disableShadow = (e: Image) => {
+  const disableShadow = (e: Shape) => {
     e.shadowEnabled(false)
   }
   const batchGroupShadow = (group: Group, enabled = true) => {
     if (group.getClassName() !== 'Group') return
 
 
-    const isImage = (n: Node) => n.getClassName && n.getClassName() === 'Image'
+    const isImage = (n: Node) => n.getClassName && n.getClassName() === 'Shape'
 
-    const groupImages = (group.getChildren(isImage)) as Image[]
+    const groupImages = (group.getChildren(isImage)) as Shape[]
     if (!groupImages.length) return
 
     groupImages.forEach(e => e.shadowEnabled(enabled))
   }
   const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
-  const attachImageBounds = (image: Image) => {
+  const attachImageBounds = (image: Shape) => {
     image.dragBoundFunc(pos => {
       const stage = image.getStage()
       if (!stage) return pos
@@ -69,20 +71,20 @@ function App() {
 
     const imgMap = Object.fromEntries<Fragment>(imgs.current.map(img => ([img.src.src, img])))
 
-    const isImage = (n: Node) => n.getClassName && n.getClassName() === 'Image'
+    const isImage = (n: Node) => n.getClassName && n.getClassName() === 'Shape'
 
-    const groupImages = (group.getChildren(isImage)) as Image[]
+    const groupImages = (group.getChildren(isImage)) as Shape[]
     if (!groupImages.length) return
 
     groupImages.forEach(disableShadow)
-    const layerImages = (layer.getChildren(isImage)) as Image[]
+    const layerImages = (layer.getChildren(isImage)) as Shape[]
     const otherGroupImages = ((layer.getChildren((n) => n.getClassName() === 'Group' && n.id() !== group.id()) as Group[])
-      .map(g => g.getChildren(isImage)).flat()) as Image[] || [];
+      .map(g => g.getChildren(isImage)).flat()) as Shape[] || [];
 
     const candidates = [...layerImages, ...otherGroupImages]
 
-    let movingChild: Image | null = null
-    let closest: Image | undefined
+    let movingChild: Shape | null = null
+    let closest: Shape | undefined
 
     for (const child of groupImages) {
       closest = findClosest(child, candidates, imgMap)
@@ -94,8 +96,8 @@ function App() {
 
     if (!movingChild || !closest) return
 
-    const a = imgMap[movingChild.attrs.image.src]
-    const b = imgMap[closest.attrs.image.src]
+    const a = imgMap[movingChild.attrs.fillPatternImage.src]
+    const b = imgMap[closest.attrs.fillPatternImage.src]
 
     const aPos = movingChild.getAbsolutePosition()
     const bPos = closest.getAbsolutePosition()
@@ -123,7 +125,7 @@ function App() {
 
     if (closestInGroup && (closestParent).id() !== group.id()) {
       const otherGroup = closestParent
-      const otherImages = (otherGroup.getChildren(isImage)) as Image[]
+      const otherImages = (otherGroup.getChildren(isImage)) as Shape[]
       const saved = otherImages.map(s => ({ s, pos: s.getAbsolutePosition() }))
 
       otherImages.forEach((s) => {
@@ -133,11 +135,11 @@ function App() {
       saved.forEach(({ s, pos }) => s.absolutePosition(pos))
 
       otherImages.forEach((s) => {
-        const frag = imgMap[s.attrs.image.src]
+        const frag = imgMap[s.attrs.fillPatternImage.src]
         if (frag) frag.groupId = thisGroupId
       })
 
-      if ((otherGroup.getChildren(isImage) as Image[]).length === 0) {
+      if ((otherGroup.getChildren(isImage) as Shape[]).length === 0) {
         otherGroup.destroy()
       }
       attachGroupBounds(group)
@@ -149,20 +151,21 @@ function App() {
 
       attachGroupBounds(group)
     }
+    setSuccess(imgs.current.every(img => img.groupId) && new Set(imgs.current.map(img => img.groupId)).size === 1)
   }
 
-  const onImageDragEnd: KonvaEventListener<Image, DragEvent> = (e) => {
-    disableShadow(e.target as Image)
-    if (e.target.getClassName() !== 'Image') return
+  const onImageDragEnd: KonvaEventListener<Shape, DragEvent> = (e) => {
+    disableShadow(e.target as Shape)
+    if (e.target.getClassName() !== 'Shape') return
     const imgMap = Object.fromEntries<Fragment>(imgs.current.map(img => ([img.src.src, img])))
-    const a = imgMap[e.target.attrs.image.src]
-    const filter = (c: Node) => c.getClassName() === 'Image' && c.attrs.image.src !== e.target.attrs.image.src
-    const allImgs = (e.target.getLayer()?.getChildren(filter)) as Image[] || [];
-    const g = e.target.getLayer()?.getChildren(c => c.getClassName() === 'Group').map(group => (group as Group).getChildren(filter)).flat() as Image[] || [];
+    const a = imgMap[e.target.attrs.fillPatternImage.src]
+    const filter = (c: Node) => c.getClassName() === 'Shape' && c.attrs.fillPatternImage.src !== e.target.attrs.fillPatternImage.src
+    const allImgs = (e.target.getLayer()?.getChildren(filter)) as Shape[] || [];
+    const g = e.target.getLayer()?.getChildren(c => c.getClassName() === 'Group').map(group => (group as Group).getChildren(filter)).flat() as Shape[] || [];
     allImgs.push(...g);
-    const closest = findClosest(e.target as Image, allImgs, imgMap);
+    const closest = findClosest(e.target as Shape, allImgs, imgMap);
     if (!closest) return;
-    const b = imgMap[closest.attrs.image.src]
+    const b = imgMap[closest.attrs.fillPatternImage.src]
     if (a && b) {
       // 把a合并到b中
       if (b.groupId) {
@@ -208,12 +211,13 @@ function App() {
       if (!existGroup) {
         stage.getLayers()[0].add(group)
       }
+      setSuccess(imgs.current.every(img => img.groupId) && new Set(imgs.current.map(img => img.groupId)).size === 1)
     }
   }
   const generateImgs = () => {
     const stageWidth = 500
     const stageHeight = 500
-    const _imgs = generatePuzzle(`https://picsum.photos/${width}/${height}`, rowCnt, colCnt);
+    const _imgs = generatePuzzle(`https://picsum.photos/${width * colCnt}/${height * rowCnt}`, rowCnt, colCnt);
     const centerX = stageWidth * 0.2
     const centerY = stageHeight * 0.2
     const centerW = stageWidth * 0.6
@@ -242,23 +246,22 @@ function App() {
     })
     imgs.current = (fragments)
     fragments.forEach(img => {
-      const image = new Konva.Image({
-        image: img.src,
+      const image = new Konva.Shape({
+        fillPatternImage: img.src,
         width,
         height,
         draggable: true,
         x: img.x,
         y: img.y,
-        shadowColor: 'red',
-        shadowBlur: 5,
-        shadowOpacity: 0.5,
-        shadowOffset: { x: 5, y: 5 },
-        shadowEnabled: false,
+        sceneFunc(ctx, shape) {
+          clip(ctx, img.template)
+          ctx.fillStrokeShape(shape)
+        },
       })
       image.on('dragend', onImageDragEnd)
-      image.on('dragstart', e => enableShadow(e.target as Image))
-      image.on('mousedown', e => enableShadow(e.target as Image))
-      image.on('mouseup', e => disableShadow(e.target as Image))
+      image.on('dragstart', e => enableShadow(e.target as Shape))
+      image.on('mousedown', e => enableShadow(e.target as Shape))
+      image.on('mouseup', e => disableShadow(e.target as Shape))
       attachImageBounds(image)
       layer.add(image)
     })
@@ -273,7 +276,7 @@ function App() {
   return (
     <div>
       <button style={{ position: 'fixed', bottom: 20, right: 20 }} onClick={generateImgs}>生成</button>
-      <div id='container' />
+      <div id='container' style={{ backgroundColor: success ? 'green' : 'unset' }} />
     </div>
   )
 }
