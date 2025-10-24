@@ -1,5 +1,6 @@
+import type { Image } from "konva/lib/shapes/Image";
 import { height, width } from "../constants";
-import type { Fragment, Img, Shape } from "../types/img";
+import type { Fragment, Img } from "../types/img";
 export function canBeMerged(img1: Img, img2: Img): boolean {
   return (
     img1.row === img2.row && Math.abs(img1.col - img2.col) === 1
@@ -7,9 +8,9 @@ export function canBeMerged(img1: Img, img2: Img): boolean {
   )
 }
 
-export function findClosest(img: Shape, all: Shape[], imgMap: Record<string, Fragment>) {
+export function findClosest(img: Image, all: Image[], imgMap: Record<string, Fragment>) {
   const curFragment = imgMap[img.attrs.image.src];
-  let shape: Shape | undefined;
+  let shape: Image | undefined;
   all.forEach(v => {
     const otherFragment = imgMap[v.attrs.image.src]
     if (!canBeMerged(curFragment, otherFragment)) return;

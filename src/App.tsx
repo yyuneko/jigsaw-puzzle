@@ -1,39 +1,88 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import './App.css'
 import { generatePuzzle } from './utils/create-puzzle'
-import type { Fragment, Shape } from './types/img'
+import type { Fragment } from './types/img'
 import { findClosest } from './utils/check'
 import { v7 as uuid } from 'uuid'
 import { height, width } from './constants'
 import Konva from 'konva'
-import type { KonvaEventListener } from 'konva/lib/Node'
+import type { KonvaEventListener, Node } from 'konva/lib/Node'
+import type { Image } from 'konva/lib/shapes/Image'
+import type { Group } from 'konva/lib/Group'
 
 const rowCnt = 5;
 const colCnt = 5;
 function App() {
   const imgs = useRef<Fragment[]>([])
-  const onGroupDragEnd: KonvaEventListener<Node, DragEvent> = (e) => {
+  const enableShadow = (e: Image) => {
+    e.shadowEnabled(true)
+  }
+  const disableShadow = (e: Image) => {
+    e.shadowEnabled(false)
+  }
+  const batchGroupShadow = (group: Group, enabled = true) => {
+    if (group.getClassName() !== 'Group') return
+
+
+    const isImage = (n: Node) => n.getClassName && n.getClassName() === 'Image'
+
+    const groupImages = (group.getChildren(isImage)) as Image[]
+    if (!groupImages.length) return
+
+    groupImages.forEach(e => e.shadowEnabled(enabled))
+  }
+  const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+  const attachImageBounds = (image: Image) => {
+    image.dragBoundFunc(pos => {
+      const stage = image.getStage()
+      if (!stage) return pos
+      const maxX = stage.width() - image.width()
+      const maxY = stage.height() - image.height()
+      return {
+        x: clamp(pos.x, 0, maxX),
+        y: clamp(pos.y, 0, maxY)
+      }
+    })
+  }
+  const attachGroupBounds = (group: Group) => {
+    group.dragBoundFunc(pos => {
+      const stage = group.getStage()
+      if (!stage) return pos
+      const rect = group.getClientRect({ skipShadow: true })
+      const dx = pos.x - group.x()
+      const dy = pos.y - group.y()
+      const minDx = -rect.x
+      const maxDx = stage.width() - (rect.x + rect.width)
+      const minDy = -rect.y
+      const maxDy = stage.height() - (rect.y + rect.height)
+      const ndx = clamp(dx, minDx, maxDx)
+      const ndy = clamp(dy, minDy, maxDy)
+      return { x: group.x() + ndx, y: group.y() + ndy }
+    })
+  }
+  const onGroupDragEnd: KonvaEventListener<Group, DragEvent> = (e) => {
 
     const stage = e.target.getStage()!
     const layer = stage.getLayers()[0]
-    const group = e.target
-    if(group.getClassName()!=='Group')return
+    const group = e.target as Group
+    if (group.getClassName() !== 'Group') return
 
     const imgMap = Object.fromEntries<Fragment>(imgs.current.map(img => ([img.src.src, img])))
 
-    const isImage = (n): n is Shape => n.getClassName && n.getClassName() === 'Image'
+    const isImage = (n: Node) => n.getClassName && n.getClassName() === 'Image'
 
-    const groupImages = (group.getChildren(isImage)) as Shape[]
+    const groupImages = (group.getChildren(isImage)) as Image[]
     if (!groupImages.length) return
 
-    const layerImages = (layer.getChildren(isImage)) as Shape[]
-    const otherGroupImages = (layer.getChildren((n) => n.getClassName() === 'Group' && n.id() !== group.id())
-      .map((g) => (g).getChildren(isImage)).flat()) as Shape[] || [];
+    groupImages.forEach(disableShadow)
+    const layerImages = (layer.getChildren(isImage)) as Image[]
+    const otherGroupImages = ((layer.getChildren((n) => n.getClassName() === 'Group' && n.id() !== group.id()) as Group[])
+      .map(g => g.getChildren(isImage)).flat()) as Image[] || [];
 
-    const candidates: Shape[] = [...layerImages, ...otherGroupImages]
+    const candidates = [...layerImages, ...otherGroupImages]
 
-    let movingChild: Shape | null = null
-    let closest: Shape | undefined
+    let movingChild: Image | null = null
+    let closest: Image | undefined
 
     for (const child of groupImages) {
       closest = findClosest(child, candidates, imgMap)
@@ -74,7 +123,7 @@ function App() {
 
     if (closestInGroup && (closestParent).id() !== group.id()) {
       const otherGroup = closestParent
-      const otherImages = (otherGroup.getChildren(isImage)) as Shape[]
+      const otherImages = (otherGroup.getChildren(isImage)) as Image[]
       const saved = otherImages.map(s => ({ s, pos: s.getAbsolutePosition() }))
 
       otherImages.forEach((s) => {
@@ -88,25 +137,30 @@ function App() {
         if (frag) frag.groupId = thisGroupId
       })
 
-      if ((otherGroup.getChildren(isImage) as Shape[]).length === 0) {
+      if ((otherGroup.getChildren(isImage) as Image[]).length === 0) {
         otherGroup.destroy()
       }
+      attachGroupBounds(group)
     } else if (!closestInGroup) {
       const savedPos = closest.getAbsolutePosition()
       closest.draggable(false)
       group.add(closest)
       closest.absolutePosition(savedPos)
 
+      attachGroupBounds(group)
     }
   }
-  const onImageDragEnd: KonvaEventListener<Node, DragEvent> = (e) => {
+
+  const onImageDragEnd: KonvaEventListener<Image, DragEvent> = (e) => {
+    disableShadow(e.target as Image)
+    if (e.target.getClassName() !== 'Image') return
     const imgMap = Object.fromEntries<Fragment>(imgs.current.map(img => ([img.src.src, img])))
     const a = imgMap[e.target.attrs.image.src]
-    const filter = c => c.getClassName() === 'Image' && c.attrs.image.src !== e.target.attrs.image.src
-    const allImgs = (e.target.getLayer()?.getChildren(filter)) as Shape[] || [];
-    const g = e.target.getLayer()?.getChildren(c => c.getClassName() === 'Group').map(group => (group).getChildren(filter)).flat() as Shape[] || [];
+    const filter = (c: Node) => c.getClassName() === 'Image' && c.attrs.image.src !== e.target.attrs.image.src
+    const allImgs = (e.target.getLayer()?.getChildren(filter)) as Image[] || [];
+    const g = e.target.getLayer()?.getChildren(c => c.getClassName() === 'Group').map(group => (group as Group).getChildren(filter)).flat() as Image[] || [];
     allImgs.push(...g);
-    const closest = findClosest(e.target as Shape, allImgs, imgMap);
+    const closest = findClosest(e.target as Image, allImgs, imgMap);
     if (!closest) return;
     const b = imgMap[closest.attrs.image.src]
     if (a && b) {
@@ -129,8 +183,8 @@ function App() {
       }
       const tempAPos = e.target.getAbsolutePosition()
       const tempBPos = closest.getAbsolutePosition()
-      const existGroup = stage.getLayers()[0].getChildren(c => c.getClassName() === 'Group' && c.id() === a.groupId)?.[0]
-      const group: Group = existGroup || new Konva.Group({
+      const existGroup = stage.getLayers()[0].getChildren(c => c.getClassName() === 'Group' && c.id() === a.groupId)?.[0] as Group
+      const group = existGroup || new Konva.Group({
         id: a.groupId,
         draggable: true,
         x: 0,
@@ -138,14 +192,22 @@ function App() {
       })
       if (!existGroup) {
         group.on('dragend', onGroupDragEnd)
+        group.on('dragstart', e => batchGroupShadow(e.target as Group))
+        group.on('mousedown', e => batchGroupShadow(e.target as Group))
+        group.on('mouseup', e => batchGroupShadow(e.target as Group, false))
       }
       e.target.draggable(false)
       closest.draggable(false)
       group.add(e.target)
-      !existGroup && group.add(closest)
+      if (!existGroup) {
+        group.add(closest)
+      }
       e.target.absolutePosition(tempAPos)
       closest.absolutePosition(tempBPos)
-      !existGroup && stage.getLayers()[0].add(group)
+      attachGroupBounds(group)
+      if (!existGroup) {
+        stage.getLayers()[0].add(group)
+      }
     }
   }
   const generateImgs = () => {
@@ -186,9 +248,18 @@ function App() {
         height,
         draggable: true,
         x: img.x,
-        y: img.y
+        y: img.y,
+        shadowColor: 'red',
+        shadowBlur: 5,
+        shadowOpacity: 0.5,
+        shadowOffset: { x: 5, y: 5 },
+        shadowEnabled: false,
       })
       image.on('dragend', onImageDragEnd)
+      image.on('dragstart', e => enableShadow(e.target as Image))
+      image.on('mousedown', e => enableShadow(e.target as Image))
+      image.on('mouseup', e => disableShadow(e.target as Image))
+      attachImageBounds(image)
       layer.add(image)
     })
     stage.add(layer)
