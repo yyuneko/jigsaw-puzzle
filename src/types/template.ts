@@ -3,9 +3,9 @@ import { type Edge } from "../utils/template";
 
 export interface MatchMode {
   revert: MatchMode;
-  type: [Edge, number];
+  // type: [Edge, number];
   path: (p: Context) => void;
-  readonly inset: number;
+  // readonly inset: number;
 }
 export interface Template {
   left: MatchMode;
