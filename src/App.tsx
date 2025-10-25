@@ -62,6 +62,23 @@ function App() {
       return { x: group.x() + ndx, y: group.y() + ndy }
     })
   }
+  const waitImage = async (img: HTMLImageElement) => {
+    if (img.complete && img.naturalWidth > 0) return
+    if ('decode' in img && typeof img.decode === 'function') {
+      try { await img.decode() } catch { /* ignore */ }
+      return
+    }
+    await new Promise<void>((resolve) => {
+      const onLoad = () => { cleanup(); resolve() }
+      const onError = () => { cleanup(); resolve() }
+      const cleanup = () => {
+        img.removeEventListener('load', onLoad)
+        img.removeEventListener('error', onError)
+      }
+      img.addEventListener('load', onLoad)
+      img.addEventListener('error', onError)
+    })
+  }
   const onGroupDragEnd: KonvaEventListener<Group, DragEvent> = (e) => {
 
     const stage = e.target.getStage()!
@@ -214,10 +231,12 @@ function App() {
       setSuccess(imgs.current.every(img => img.groupId) && new Set(imgs.current.map(img => img.groupId)).size === 1)
     }
   }
-  const generateImgs = () => {
+  const generateImgs = async () => {
+    setSuccess(false)
     const stageWidth = 500
     const stageHeight = 500
     const _imgs = generatePuzzle(`https://picsum.photos/${width * colCnt}/${height * rowCnt}`, rowCnt, colCnt);
+    await Promise.all(_imgs.map(i => waitImage(i.src)))
     const centerX = stageWidth * 0.2
     const centerY = stageHeight * 0.2
     const centerW = stageWidth * 0.6

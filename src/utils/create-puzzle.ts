@@ -14,6 +14,7 @@ export function generatePuzzle(originImg: string, rowCnt: number, colCnt: number
   for (let row = 0; row < rowCnt; row++) {
     for (let col = 0; col < colCnt; col++) {
       const image = new Image();
+      image.crossOrigin = 'anonymous';
       image.src = `https://dummyimage.com/50x50/000/fff&text=${encodeURIComponent(`${row}, ${col}`)}`
       const template: Template = {
         top: MatchModes.top[0],
