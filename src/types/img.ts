@@ -1,7 +1,7 @@
 import type { Template } from "./template";
 
 export interface Img {
-  src: HTMLImageElement;
+  id: string;
   row: number;
   col: number;
   template: Template

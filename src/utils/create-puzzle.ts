@@ -3,7 +3,7 @@ import type { Img } from "../types/img"
 import type { MatchMode, Template } from "../types/template";
 import { MatchModes } from "./template";
 import { Bezier, type Point } from 'bezier-js'
-
+import {v7 as uuid} from 'uuid'
 function randomBetween(a: number, b: number) {
   return Math.floor(a + Math.random() * (b - a))
 }
@@ -59,13 +59,10 @@ function getBezier() {
  * @param colCnt 列数
  * @returns 拼图碎片数组，包括图片元素、所在行列
  */
-export function generatePuzzle(originImg: string, rowCnt: number, colCnt: number): Img[] {
+export function generatePuzzle(rowCnt: number, colCnt: number): Img[] {
   const imgs: Img[] = []
   for (let row = 0; row < rowCnt; row++) {
     for (let col = 0; col < colCnt; col++) {
-      const image = new Image();
-      image.crossOrigin = 'anonymous';
-      image.src = `https://dummyimage.com/50x50/000/fff&text=${encodeURIComponent(`${row}, ${col}`)}`
       const template: Template = {
         top: MatchModes.top[0],
         right: MatchModes.right[0],
@@ -122,8 +119,26 @@ export function generatePuzzle(originImg: string, rowCnt: number, colCnt: number
       if (col !== 0) {
         template.left = imgs[row * colCnt + col - 1].template.right.revert;
       }
-      imgs.push({ src: image, row, col, template })
+      imgs.push({ id: uuid(), row, col, template })
     }
   }
   return imgs
+}
+
+export const waitImage = async (img: HTMLImageElement) => {
+  if (img.complete && img.naturalWidth > 0) return
+  if ('decode' in img && typeof img.decode === 'function') {
+    try { await img.decode() } catch { /* ignore */ }
+    return
+  }
+  await new Promise<void>((resolve) => {
+    const onLoad = () => { cleanup(); resolve() }
+    const onError = () => { cleanup(); resolve() }
+    const cleanup = () => {
+      img.removeEventListener('load', onLoad)
+      img.removeEventListener('error', onError)
+    }
+    img.addEventListener('load', onLoad)
+    img.addEventListener('error', onError)
+  })
 }

@@ -9,10 +9,10 @@ export function canBeMerged(img1: Img, img2: Img): boolean {
 }
 
 export function findClosest(img: Shape, all: Shape[], imgMap: Record<string, Fragment>) {
-  const curFragment = imgMap[img.attrs.fillPatternImage.src];
+  const curFragment = imgMap[img.id()];
   let shape: Shape | undefined;
   all.forEach(v => {
-    const otherFragment = imgMap[v.attrs.fillPatternImage.src]
+    const otherFragment = imgMap[v.id()]
     if (!canBeMerged(curFragment, otherFragment)) return;
     if (Math.abs((v.getAbsolutePosition().x + width * (curFragment.col - otherFragment.col) - img.getAbsolutePosition().x)) <= 10
       && Math.abs(v.getAbsolutePosition().y + height * (curFragment.row - otherFragment.row) - img.getAbsolutePosition().y) <= 10) {
